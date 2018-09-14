@@ -24,6 +24,8 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+/* List of timers */
+static struct timer *timer_list;
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -90,10 +92,14 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-
+  struct semaphore sema;
+  sema_init(&sema, 0);
+  struct timer t;
+  t.sema = sema;
+  t.ticks_to_wait = ticks;
+  list_push_back(&list_timers, t.elem);
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  sema_down(&sema);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +178,21 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+}
+
+/* Iterate through every timer and decrement the ticks_to_wait. If the value reaches zero, UP the semaphore of the timer to wake up the waiting thread */
+void timer_list_countdown()
+{
+  struct list_elem *e;
+  for (e = list_begin (&timer_list); e != list_end(&timer_list); e = list_end (e))
+  {
+    struct timer *t = list_entry (e, struct timer, elem);
+    t->ticks_to_wait -= 1;
+    if (t->ticks_to_wait <= 0)
+    {
+      sema_up(&(t->sema));
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
