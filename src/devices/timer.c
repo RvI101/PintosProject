@@ -26,12 +26,13 @@ static unsigned loops_per_tick;
 
 /* List of timers */
 static struct list timer_list;
+
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-
+static void timer_list_countdown();
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -183,15 +184,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
 }
 
 /* Iterate through every timer and decrement the ticks_to_wait. If the value reaches zero, UP the semaphore of the timer to wake up the waiting thread */
-void timer_list_countdown()
+static void timer_list_countdown()
 {
   struct list_elem *e;
-  for (e = list_begin (&timer_list); e != list_end(&timer_list); e = list_end (e))
+  for (e = list_begin (&timer_list); e != list_end(&timer_list); e = list_next(e))
   {
     struct timer *t = list_entry (e, struct timer, elem);
     t->ticks_to_wait -= 1;
     if (t->ticks_to_wait <= 0)
     {
+      list_remove(&(t->elem));
       sema_up(&(t->sema));
     }
   }

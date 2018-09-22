@@ -16,7 +16,7 @@ struct timer {
   struct semaphore sema; /* Semaphore that indicates if timer has completed or not */
   int64_t ticks_to_wait; /* Number of ticks left on timer */
   struct list_elem elem;
-}
+};
 int64_t timer_ticks (void);
 int64_t timer_elapsed (int64_t);
 
