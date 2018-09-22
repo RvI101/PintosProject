@@ -25,7 +25,7 @@ static int64_t ticks;
 static unsigned loops_per_tick;
 
 /* List of timers */
-static struct timer *timer_list;
+static struct list timer_list;
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -37,6 +37,7 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
+  list_init (&timer_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -97,7 +98,7 @@ timer_sleep (int64_t ticks)
   struct timer t;
   t.sema = sema;
   t.ticks_to_wait = ticks;
-  list_push_back(&list_timers, t.elem);
+  list_push_back(&timer_list, &(t.elem));
   ASSERT (intr_get_level () == INTR_ON);
   sema_down(&sema);
 }
@@ -177,6 +178,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  timer_list_countdown();
   thread_tick ();
 }
 
