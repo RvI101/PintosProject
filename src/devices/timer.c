@@ -7,7 +7,6 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -93,15 +92,15 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-  struct semaphore sema;
-  sema_init(&sema, 0);
   struct timer t;
-  t.sema = sema;
+  int64_t start = timer_ticks();
+  sema_init(&t.sema, 0);
   t.ticks_to_wait = ticks;
+  //printf("\nPushing %d ticks timer on timer list\n", ticks);
   list_push_back(&timer_list, &(t.elem));
   ASSERT (intr_get_level () == INTR_ON);
-  sema_down(&sema);
+  sema_down(&(t.sema));
+  //printf("\nAlarm for %d ticks waking up after %" PRId64 "ticks\n", ticks, timer_elapsed(start));
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -179,7 +178,9 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  timer_list_countdown();
+  if(!list_empty(&timer_list)) {
+    timer_list_countdown();
+  }
   thread_tick ();
 }
 
@@ -191,9 +192,10 @@ static void timer_list_countdown()
   {
     struct timer *t = list_entry (e, struct timer, elem);
     t->ticks_to_wait -= 1;
+    //printf("\nTimer Ticks Left : %d", t->ticks_to_wait);
     if (t->ticks_to_wait <= 0)
     {
-      list_remove(&(t->elem));
+      list_remove(e);
       sema_up(&(t->sema));
     }
   }
