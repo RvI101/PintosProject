@@ -87,17 +87,24 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+bool ticks_incr(const struct list_elem *a, const struct list_elem *b, void *aux) 
+{
+  struct timer *ta = list_entry(a, struct timer, elem);
+  struct timer *tb = list_entry(b, struct timer, elem);
+  return ta->ticks_to_wait < tb->ticks_to_wait;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
   struct timer t;
-  int64_t start = timer_ticks();
+  int64_t target = timer_ticks() + ticks;
   sema_init(&t.sema, 0);
-  t.ticks_to_wait = ticks;
+  t.ticks_to_wait = target;
   //printf("\nPushing %d ticks timer on timer list\n", ticks);
-  list_push_back(&timer_list, &(t.elem));
+  list_insert_ordered(&timer_list, &(t.elem), &ticks_incr, 0);
   ASSERT (intr_get_level () == INTR_ON);
   sema_down(&(t.sema));
   //printf("\nAlarm for %d ticks waking up after %" PRId64 "ticks\n", ticks, timer_elapsed(start));
@@ -187,17 +194,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
 /* Iterate through every timer and decrement the ticks_to_wait. If the value reaches zero, UP the semaphore of the timer to wake up the waiting thread */
 static void timer_list_countdown()
 {
-  struct list_elem *e;
-  for (e = list_begin (&timer_list); e != list_end(&timer_list); e = list_next(e))
+  struct list_elem *e = list_begin(&timer_list);
+  struct timer *t = list_entry(e, struct timer, elem);
+  if(t->ticks_to_wait <= timer_ticks()) 
   {
-    struct timer *t = list_entry (e, struct timer, elem);
-    t->ticks_to_wait -= 1;
-    //printf("\nTimer Ticks Left : %d", t->ticks_to_wait);
-    if (t->ticks_to_wait <= 0)
-    {
-      list_remove(e);
-      sema_up(&(t->sema));
-    }
+    list_pop_front(&timer_list);
+    sema_up(&t->sema);
   }
 }
 
