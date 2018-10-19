@@ -205,6 +205,7 @@ busy_wait (int64_t loops)
 {
   while (loops-- > 0)
     barrier ();
+
 }
 
 /* Sleep for approximately NUM/DENOM seconds. */
