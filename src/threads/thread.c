@@ -86,7 +86,6 @@ bool priority_check(const struct list_elem *first_thread,const struct list_elem 
 void
 thread_init (void) 
 {
-  printf("inside init");
   ASSERT (intr_get_level () == INTR_OFF);
   lock_init (&tid_lock);
   list_init (&ready_list);
@@ -96,9 +95,8 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
-  printf("inside init 2");
   initial_thread->tid = allocate_tid ();
-  printf("inside init");
+  
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -106,7 +104,7 @@ thread_init (void)
 void
 thread_start (void) 
 {
-  printf("after thread init");
+  
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
@@ -117,7 +115,7 @@ thread_start (void)
   
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
-  printf("thread started");
+  
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -183,7 +181,6 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  printf("outside init");
   tid = t->tid = allocate_tid ();
 
   /* Prepare thread for first run by initializing its stack.
@@ -210,7 +207,6 @@ thread_create (const char *name, int priority,
   
   /* Add to run queue. */
   thread_unblock (t);
-  printf("Inside thread create");
   if (thread_current()->priority < t->priority)
        thread_yield ();
   
@@ -250,7 +246,8 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
-  intr_set_level (old_level);     
+  intr_set_level (old_level);  
+     
 }
 
 /* Returns the name of the running thread. */
@@ -560,7 +557,6 @@ schedule (void)
 {
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
-  printf("schedule");
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
@@ -601,12 +597,9 @@ allocate_tid (void)
 {
   static tid_t next_tid = 1;
   tid_t tid;
-  printf("Inside allocate id");
   lock_acquire (&tid_lock);
-  printf("inside lock acquired");
   tid = next_tid++;
   lock_release (&tid_lock);
-  printf("Inside allocate tid");
   return tid;
 }
 
