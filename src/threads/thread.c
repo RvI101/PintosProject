@@ -626,14 +626,14 @@ void priority_donate(struct thread *donor, struct thread *recipient)
   }
 }
 /* TODO: Add context about pri_release */
-void priority_release(struct thread *recipient, struct lock lock)
+void priority_release(struct thread *recipient, struct lock *lock)
 {
   if(!list_empty(&recipient->priority.donors))
   {
     struct list_elem *d, *w;
-    for(d = list_begin(&recipient->priority.donors); d != list_end(&recipient->priority.donors); d = list_next(d))
+    for(d = list_begin(&(recipient->priority.donors)); d != list_end(&(recipient->priority.donors)); d = list_next(d))
     {
-      for(w = list_begin(&lock.semaphore.waiters); w != list_end(&lock.semaphore.waiters); w = list_next(w))
+      for(w = list_begin(&(lock->semaphore.waiters)); w != list_end(&(lock->semaphore.waiters)); w = list_next(w))
       {
         struct thread *waiter = list_entry(w, struct thread, elem);
         struct thread *donor = list_entry(d, struct thread, pri_elem);
