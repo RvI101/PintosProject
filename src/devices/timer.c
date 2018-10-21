@@ -185,22 +185,29 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  if(!list_empty(&timer_list)) {
-    timer_list_countdown();
-  }
   thread_tick ();
+  if(!list_empty(&timer_list)) {
+    /* Traverse through the beginning of the ordered timer list to see if timers are due to wake and UP the timer semaphore if it is */
+    struct list_elem *e = list_begin(&timer_list);
+    struct timer *t = list_entry(e, struct timer, elem);
+    while(t->ticks_to_wait <= timer_ticks())
+    {
+      sema_up(&t->sema);
+      list_pop_front(&timer_list);
+      if(list_empty(&timer_list))
+      {
+        break;
+      }
+      e = list_begin(&timer_list);
+      t = list_entry(e, struct timer, elem);
+    }
+  }
 }
 
-/* Iterate through every timer and decrement the ticks_to_wait. If the value reaches zero, UP the semaphore of the timer to wake up the waiting thread */
+
 static void timer_list_countdown()
 {
-  struct list_elem *e = list_begin(&timer_list);
-  struct timer *t = list_entry(e, struct timer, elem);
-  if(t->ticks_to_wait <= timer_ticks()) 
-  {
-    list_pop_front(&timer_list);
-    sema_up(&t->sema);
-  }
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
