@@ -344,18 +344,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  if(thread_current()->priority.effective_priority == thread_current()->priority.base)
+  struct thread *max_donor = list_entry(list_max(&(thread_current()->priority.donors), priority_check, NULL), struct thread, pri_elem);
+  thread_current()->priority.base = new_priority;
+  if(thread_current()->priority.base < max_donor->priority.effective_priority)
   {
-    struct thread *max_donor = list_entry(list_max(&(thread_current()->priority.donors), priority_check, NULL), struct thread, pri_elem);
-    thread_current()->priority.base = new_priority;
-    if(thread_current()->priority.base < max_donor->priority.effective_priority)
-    {
-      thread_current()->priority.effective_priority = max_donor->priority.effective_priority;
-    }
-    else
-    {
-      thread_current()->priority.effective_priority = thread_current()->priority.base;
-    }
+    thread_current()->priority.effective_priority = max_donor->priority.effective_priority;
+  }
+  else
+  {
+    thread_current()->priority.effective_priority = thread_current()->priority.base;
   }
   priority_yield();
 }
