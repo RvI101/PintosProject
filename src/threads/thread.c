@@ -626,15 +626,18 @@ allocate_tid (void)
 /* DONOR thread donates priority to RECIPIENT thread if base priority of RECIPIENT is lesser than the effective priority of DONOR.
  * This is done recursively to recipients of RECIPIENT as well.
  * Interrupts must be disabled to maintain concurrency when manipulating the priority chain of threads. */
-void priority_donate(struct thread *donor, struct thread *recipient)
+void priority_donate(struct thread *donor, struct thread *recipient, bool update)
 {
   if(donor->priority.effective_priority > recipient->priority.base)
   {
     recipient->priority.effective_priority = donor->priority.effective_priority > recipient->priority.effective_priority ? donor->priority.effective_priority : recipient->priority.effective_priority;
-    list_insert_ordered(&recipient->priority.donors, &donor->pri_elem, priority_check, NULL);
+    if(!update)
+    {
+      list_push_front(&recipient->priority.donors, &donor->pri_elem);
+    }
     if(recipient->priority.recipient != NULL)
     {
-      priority_donate(recipient, recipient->priority.recipient);  /* recursively donate to every thread along the existing donation chain */
+      priority_donate(recipient, recipient->priority.recipient, true);  /* recursively donate to every thread along the existing donation chain */
     }
     donor->priority.recipient = recipient;
   }
