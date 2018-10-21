@@ -147,4 +147,5 @@ void priority_yield(void);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 void update_advanced_priority_forall(void);
 void update_recent_cpu_forall(void);
+void update_load_avg(void);
 #endif /* threads/thread.h */

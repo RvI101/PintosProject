@@ -78,7 +78,11 @@ static tid_t allocate_tid (void);
 void priority_yield(void);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 void update_advanced_priority_forall(void);
+void update_advanced(struct thread*, void*aux UNUSED);
+void update_recent_cpu(struct thread*,void*aux UNUSED);
 void update_recent_cpu_forall(void);
+void update_load_avg(void);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -330,11 +334,17 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur!=idle_thread)
+  {
     if(thread_mlfqs==false)
+    {
       list_push_back (&ready_list, &cur->elem);
+    }
     else
-	list_push_back (&mlfqs_ready_list[pri_i], &cur->elem);
+    {
+      list_push_back (&mlfqs_ready_list[pri_i], &cur->elem);
+    }
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
