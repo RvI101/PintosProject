@@ -573,7 +573,8 @@ void priority_yield(void)
 {
  if(list_empty(&ready_list))
    return;
- struct thread *priority_thread=list_entry(list_front(&ready_list),struct thread,elem);
+ struct list_elem* next_thread=list_max(&ready_list,priority_check,NULL);
+ struct thread *priority_thread = list_entry (next_thread, struct thread, elem);
  if (thread_current()->priority < priority_thread->priority)
  {
       thread_yield ();
