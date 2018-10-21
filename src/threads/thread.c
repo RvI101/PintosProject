@@ -372,10 +372,10 @@ advanced_priority(struct thread* thread, void*aux UNUSED)
   if(thread!=idle_thread)
   {
     int div_1=INT_DIV(thread->recent_cpu, 4);
-    thread->priority = PRI_MAX - CONVERT_TO_INT(div_1)-thread->nice*2;
+    thread->priority.base = PRI_MAX - CONVERT_TO_INT(div_1)-thread->nice*2;
     //Bound thread priority
-    thread->priority = thread->priority>PRI_MAX?PRI_MAX:thread->priority;
-    thread->priority = thread->priority<PRI_MIN?PRI_MIN:thread->priority;
+    thread->priority.base = thread->priority.base>PRI_MAX?PRI_MAX:thread->priority.base;
+    thread->priority.base = thread->priority.base<PRI_MIN?PRI_MIN:thread->priority.base;
   }	
 }
 
@@ -404,7 +404,14 @@ update_recent_cpu(struct thread*thread, void*aux UNUSED)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority.effective_priority;
+  if(thread_mlfqs)
+  {
+    return thread_current ()->priority.base;
+  }
+  else
+  {
+    return thread_current ()->priority.effective_priority;
+  }
 }
 
 /* Update recent CPU for all threads*/
@@ -669,9 +676,19 @@ void priority_yield(void)
 
  struct list_elem* next_thread=list_max(&ready_list,priority_check,NULL);
  struct thread *priority_thread = list_entry (next_thread, struct thread, elem);
- if (thread_current()->priority.effective_priority < priority_thread->priority.effective_priority)
+ if(thread_mlfqs)
  {
-   thread_yield ();
+   if (thread_current()->priority.base < priority_thread->priority.base)
+   {
+     thread_yield ();
+   }
+ }
+ else
+ {
+   if (thread_current()->priority.effective_priority < priority_thread->priority.effective_priority)
+   {
+     thread_yield ();
+   }
  }
 }
 
@@ -679,10 +696,14 @@ bool priority_check(const struct list_elem *first_thread,const struct list_elem 
 {
   struct thread *first = list_entry(first_thread,struct thread,elem);
   struct thread *second = list_entry(second_thread,struct thread,elem);
-  if(second->priority.effective_priority > first->priority.effective_priority)
-	return true;
+  if(thread_mlfqs)
+  {
+    return second->priority.base > first->priority.base;
+  }
   else
-	return false;
+  {
+    return second->priority.effective_priority > first->priority.effective_priority;
+  }
 }
 
 

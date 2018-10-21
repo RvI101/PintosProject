@@ -201,12 +201,15 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
   enum intr_level old_level;
 
-  old_level = intr_disable();
-  if(lock->holder != NULL && lock->holder->priority.base < thread_get_priority())
+  if(!thread_mlfqs)
   {
-    priority_donate(thread_current(), lock->holder, false);
+    old_level = intr_disable();
+    if(lock->holder != NULL && lock->holder->priority.base < thread_get_priority())
+    {
+      priority_donate(thread_current(), lock->holder, false);
+    }
+    intr_set_level(old_level);
   }
-  intr_set_level(old_level);
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
@@ -241,13 +244,16 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   enum intr_level old_level;
-  old_level = intr_disable();
 
-  if(!list_empty(&thread_current()->priority.donors))
+  if(!thread_mlfqs)
   {
-    priority_release(thread_current(), lock);
+    old_level = intr_disable();
+    if(!list_empty(&thread_current()->priority.donors))
+    {
+      priority_release(thread_current(), lock);
+    }
+    intr_set_level(old_level);
   }
-  intr_set_level(old_level);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -312,7 +318,14 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  waiter.semaphore_priority  = thread_current() -> priority.effective_priority;
+  if(!thread_mlfqs)
+  {
+    waiter.semaphore_priority  = thread_current() -> priority.effective_priority;
+  }
+  else
+  {
+    waiter.semaphore_priority  = thread_current() -> priority.base;
+  }
   list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   
