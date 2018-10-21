@@ -28,6 +28,14 @@ typedef int tid_t;
 #define NICE_MIN -20
 #define NICE_MAX 20
 
+struct priority
+{
+    int base;
+    int effective_priority;
+    struct list donors;
+    struct thread *recipient;
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -91,13 +99,14 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
+    struct priority priority;                     /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     int nice;                           /* Nice. */
     int recent_cpu;                     /* Recent CPU */
-      
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    struct list_elem pri_elem;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -118,6 +127,7 @@ void thread_start (void);
 
 void thread_tick (void);
 void thread_print_stats (void);
+
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
@@ -148,4 +158,7 @@ bool priority_check(const struct list_elem *first_thread,const struct list_elem 
 void update_advanced_priority_forall(void);
 void update_recent_cpu_forall(void);
 void update_load_avg(void);
+void priority_donate(struct thread *donor, struct thread *recipient, bool update);
+void priority_propagation(struct thread *donor, int new_priority);
+
 #endif /* threads/thread.h */
