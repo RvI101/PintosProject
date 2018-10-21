@@ -151,7 +151,7 @@ int thread_get_load_avg (void);
 void priority_yield(void);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 
-void priority_donate(struct thread *donor, struct thread *recipient);
+void priority_donate(struct thread *donor, struct thread *recipient, bool update);
 void priority_propagation(struct thread *donor, int new_priority);
 
 #endif /* threads/thread.h */
