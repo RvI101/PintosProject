@@ -343,7 +343,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current ()->priority.base = new_priority;
   priority_yield();
 }
 
@@ -465,7 +465,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+
+  struct priority p;
+  p.base = priority;
+  list_init(&p.donors);
+  p.recipient = NULL;
+  p.effective_priority = priority;
+  t->priority = p;
+
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -574,9 +581,9 @@ void priority_yield(void)
  if(list_empty(&ready_list))
    return;
  struct thread *priority_thread=list_entry(list_front(&ready_list),struct thread,elem);
- if (thread_current()->priority < priority_thread->priority)
+ if (thread_current()->priority.effective_priority < priority_thread->priority.effective_priority)
  {
-      thread_yield ();
+   thread_yield ();
  }
 }
 
@@ -584,11 +591,10 @@ bool priority_check(const struct list_elem *first_thread,const struct list_elem 
 {
   struct thread *first = list_entry(first_thread,struct thread,elem);
   struct thread *second = list_entry(second_thread,struct thread,elem);
-  if(second->priority > first->priority)
+  if(second->priority->effective_priority > first->priority->effective_priority)
 	return true;
   else
 	return false;
-
 }
 
 
@@ -602,6 +608,71 @@ allocate_tid (void)
   tid = next_tid++;
   lock_release (&tid_lock);
   return tid;
+}
+
+/* DONOR thread donates priority to RECIPIENT thread if base priority of RECIPIENT is lesser than the effective priority of DONOR.
+ * This is done recursively to recipients of RECIPIENT as well.
+ * Interrupts must be disabled to maintain concurrency when manipulating the priority chain of threads. */
+void priority_donate(struct thread *donor, struct thread *recipient)
+{
+  if(donor->priority.effective_priority > recipient->priority.base)
+  {
+    recipient->priority.effective_priority = donor->priority.effective_priority > recipient->priority.effective_priority ? donor->priority.effective_priority : recipient->priority.effective_priority;
+    list_insert_ordered(&recipient->priority.donors, &donor->pri_elem, priority_check);
+    if(!list_empty(&recipient->priority.recipients))
+    {
+      priority_donate(recipient, recipient->priority.recipient);  /* recursively donate to every thread along the existing donation chain */
+    }
+    donor->priority.recipient = recipient;
+  }
+}
+/* TODO: Add context about pri_release */
+void priority_release(struct thread *recipient, struct lock lock)
+{
+  if(!list_empty(&recipient->donors))
+  {
+    struct list_elem *d, *w;
+    for(d = list_begin(&recipient.donors); d != list_end(&recipient.donors); d = list_next(d))
+    {
+      for(w = list_begin(&lock.semaphore.waiters); w != list_end(&lock.semaphore.waiters); w = list_next(w))
+      {
+        struct thread *waiter = list_entry(w, struct thread, elem);
+        struct thread *donor = list_entry(d, struct thread, pri_elem);
+        if(waiter == donor)
+        {
+          list_remove(d);
+        }
+      }
+    }
+    struct thread *max_donor = list_entry(list_max(&recipient->priority.donors, priority_check, NULL), struct thread, pri_elem);
+    recipient->priority.effective_priority = max_donor->priority.effective_priority > recipient->priority.base ? max_donor->priority.effective_priority : recipient->priority.base;
+  }
+}
+
+void priority_propagation(struct thread *donor, int new_priority)
+{
+  if(donor->priority.recipient == NULL)
+  {
+    return;
+  }
+  if(donor->priority.recipient->priority.effective_priority < new_priority)
+  {
+    donor->priority.recipient->priority.effective_priority = new_priority;
+    priority_propagation(donor->priority.recipient, new_priority);
+  }
+  else
+  {
+    struct thread *max_donor = list_entry(list_max(&donor->priority.recipient->priority.donors, priority_check, NULL), struct thread, pri_elem);
+    bool change = max_donor->priority.effective_priority != donor->priority.recipient->priority.effective_priority;
+    if(max_donor->priority.effective_priority > &donor->priority.recipient->priority.base)
+    {
+      &donor->priority.recipient->priority.effective_priority = max_donor->priority.effective_priority;
+      if(change)
+      {
+        priority_propagation(donor->priority.recipient, &donor->priority.recipient->priority.effective_priority);
+      }
+    }
+  }
 }
 
 /* Offset of `stack' member within `struct thread'.
