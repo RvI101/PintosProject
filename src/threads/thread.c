@@ -654,6 +654,7 @@ void priority_release(struct thread *recipient, struct lock *lock)
         if(waiter == donor)
         {
           list_remove(d);
+          donor->priority.recipient = NULL;
         }
       }
     }
