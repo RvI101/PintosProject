@@ -72,7 +72,6 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void priority_yield(void);
 void priority_release(struct thread *recipient, struct lock *lock);
-void priority_donate(struct thread *donor, struct thread *recipient, bool update);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code

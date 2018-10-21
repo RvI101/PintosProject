@@ -122,7 +122,6 @@ void thread_start (void);
 void thread_tick (void);
 void thread_print_stats (void);
 
-void priority_donate(struct thread *donor, struct thread *recipient);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
@@ -150,7 +149,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 void priority_yield(void);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
-
+void priority_donate(struct thread *donor, struct thread *recipient, bool update);
 void priority_propagation(struct thread *donor, int new_priority);
 
 #endif /* threads/thread.h */
