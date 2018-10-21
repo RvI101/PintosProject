@@ -24,17 +24,23 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+/* List of timers */
+static struct list timer_list;
+
+
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void timer_list_countdown();
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
 timer_init (void) 
 {
+  list_init(&timer_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -84,16 +90,27 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+bool ticks_incr(const struct list_elem *a, const struct list_elem *b, void *aux) 
+{
+  struct timer *ta = list_entry(a, struct timer, elem);
+  struct timer *tb = list_entry(b, struct timer, elem);
+  return ta->ticks_to_wait < tb->ticks_to_wait;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-
+  struct timer t;
+  int64_t target = timer_ticks() + ticks;
+  sema_init(&t.sema, 0);
+  t.ticks_to_wait = target;
+  //printf("\nPushing %d ticks timer on timer list\n", ticks);
+  list_insert_ordered(&timer_list, &(t.elem), &ticks_incr, 0);
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  sema_down(&(t.sema));
+  //printf("\nAlarm for %d ticks waking up after %" PRId64 "ticks\n", ticks, timer_elapsed(start));
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -165,12 +182,26 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+static void timer_list_countdown()
+{
+  struct list_elem *e = list_begin(&timer_list);
+  struct timer *t = list_entry(e, struct timer, elem);
+  if(t->ticks_to_wait <= timer_ticks()) 
+  {
+    list_pop_front(&timer_list);
+    sema_up(&t->sema);
+  }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  if(!list_empty(&timer_list)) {
+    timer_list_countdown();
+  }
   thread_tick ();
    if(thread_mlfqs)
   {
