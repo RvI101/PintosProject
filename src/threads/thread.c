@@ -339,7 +339,7 @@ thread_foreach (thread_action_func *func, void *aux)
       func (t, aux);
     }
 }
-
+ 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
@@ -502,12 +502,12 @@ next_thread_to_run (void)
     return idle_thread;
   }
   else
-   {
+  {
     struct list_elem* next_thread=list_max(&ready_list,priority_check,NULL);
     struct thread *next = list_entry (next_thread, struct thread, elem);
     list_remove(next_thread);
     return next;
-   }
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -579,7 +579,9 @@ void priority_yield(void)
 {
  if(list_empty(&ready_list))
    return;
- struct thread *priority_thread=list_entry(list_front(&ready_list),struct thread,elem);
+
+ struct list_elem* next_thread=list_max(&ready_list,priority_check,NULL);
+ struct thread *priority_thread = list_entry (next_thread, struct thread, elem);
  if (thread_current()->priority.effective_priority < priority_thread->priority.effective_priority)
  {
    thread_yield ();

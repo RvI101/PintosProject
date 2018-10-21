@@ -110,7 +110,7 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
-     struct list_elem* sema_waiters=list_max(&sema->waiters,priority_list_less,NULL);
+     struct list_elem* sema_waiters=list_max(&sema->waiters,priority_check,NULL);
      struct thread *sema_waits = list_entry (sema_waiters, struct thread, elem);
      list_remove(sema_waiters);
      thread_unblock (sema_waits);
@@ -336,7 +336,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters)) 
     {
-    struct list_elem* cond_waiters=list_max(&cond->waiters,priority_check,NULL);
+    struct list_elem* cond_waiters=list_max(&cond->waiters,priority_check_semaphore,NULL);
     struct semaphore_elem *cond_waits = list_entry (cond_waiters, struct semaphore_elem, elem);
     list_remove(cond_waiters);
     sema_up (&cond_waits->semaphore);
@@ -369,15 +369,4 @@ bool priority_check_semaphore(const struct list_elem *first_thread,const struct 
    else
 	return false;
 
-}
-
-bool priority_list_less(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED)
-{
-  
-   struct thread *first = list_entry(first_thread,struct thread,elem);
-   struct thread *second = list_entry(second_thread,struct thread,elem);
-   if(second->priority.effective_priority > first->priority.effective_priority)
-	return true;
-   else
-	return false;
 }
