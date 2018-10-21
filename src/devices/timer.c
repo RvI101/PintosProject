@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-#include "threads/fixed-point.h"  
+#include "threads/fixed-point.h"
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -187,7 +187,7 @@ static void timer_list_countdown()
 {
   struct list_elem *e = list_begin(&timer_list);
   struct timer *t = list_entry(e, struct timer, elem);
-  if(t->ticks_to_wait <= timer_ticks()) 
+  if(t->ticks_to_wait <= timer_ticks())
   {
     list_pop_front(&timer_list);
     sema_up(&t->sema);
@@ -199,24 +199,37 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  if(!list_empty(&timer_list)) {
-    timer_list_countdown();
-  }
   thread_tick ();
-   if(thread_mlfqs)
-  {
-    struct thread * cur = thread_current();
-    cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
-    if(timer_ticks() % TIMER_FREQ == 0)
+  if(!list_empty(&timer_list)) {
+    /* Traverse through the beginning of the ordered timer list to see if timers are due to wake and UP the timer semaphore if it is */
+    struct list_elem *e = list_begin(&timer_list);
+    struct timer *t = list_entry(e, struct timer, elem);
+    while(t->ticks_to_wait <= timer_ticks())
     {
-      update_load_avg();
-      update_recent_cpu_forall();
-    }
-    if(timer_ticks() % 4 == 0)
-    {
-      update_advanced_priority_forall();
+      sema_up(&t->sema);
+      list_pop_front(&timer_list);
+      if(list_empty(&timer_list))
+      {
+        break;
+      }
+      e = list_begin(&timer_list);
+      t = list_entry(e, struct timer, elem);
     }
   }
+    if(thread_mlfqs)
+    {
+        struct thread * cur = thread_current();
+        cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
+        if(timer_ticks() % TIMER_FREQ == 0)
+        {
+            update_load_avg();
+            update_recent_cpu_forall();
+        }
+        if(timer_ticks() % 4 == 0)
+        {
+            update_advanced_priority_forall();
+        }
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
