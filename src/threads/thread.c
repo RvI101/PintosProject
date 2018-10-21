@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -45,6 +46,9 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
+/* Load average */
+fp_int load_avg=0;
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -72,7 +76,11 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void priority_yield(void);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
-
+void update_advanced_priority_forall(void);
+void update_advanced(struct thread*, void*aux UNUSED);
+void update_recent_cpu(struct thread*,void*aux UNUSED);
+void update_recent_cpu_forall(void);
+void update_load_avg(void);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -338,13 +346,51 @@ thread_foreach (thread_action_func *func, void *aux)
       func (t, aux);
     }
 }
- 
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
   priority_yield();
+}
+
+/* Update priority for a thread*/
+static void
+advanced_priority(struct thread* thread, void*aux UNUSED)
+{
+  if(thread!=idle_thread)
+  {
+    thread->priority = PRI_MAX-CONVERT_TO_INT(INT_DIV(thread->recent_cpu, 4))-thread->nice*2;
+    //Bound thread priority
+    thread->priority = thread->priority>PRI_MAX?PRI_MAX:thread->priority;
+    thread->priority = thread->priority<PRI_MIN?PRI_MIN:thread->priority;
+    if ( thread!=thread_current() && thread->status == THREAD_READY)
+    {
+      list_remove(&thread->elem);
+      list_push_back (&ready_list, &thread->elem);
+    }
+  }	
+}
+
+/* Update priority for all threads */
+void
+update_advanced_priority_forall(void)
+{
+    thread_foreach(advanced_priority, NULL);
+}
+
+/* Update recent CPU of a thread */
+void
+update_recent_cpu(struct thread*thread, void*aux UNUSED)
+{
+  if(thread!=idle_thread)
+  {
+    thread->recent_cpu = INT_ADD(FP_MUL(FP_DIV(INT_MUL(load_avg,2),
+					       INT_ADD(INT_MUL(load_avg,2),
+						       1)),
+					thread->recent_cpu),thread->nice);
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -354,37 +400,70 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+/* Update recent CPU for all threads*/
+void
+update_recent_cpu_forall(void)
+{
+   thread_foreach (update_recent_cpu, NULL);   
+}
+
+/* Total ready threads */
+static int
+total_ready(void)
+{
+    int i;
+    int total=list_size(&ready_list);
+    return total;
+}
+
+void
+update_load_avg(void)
+{
+  struct thread*cur = thread_current();
+  int total_ready_threads = total_ready();
+  if(cur!=idle_thread)
+      total_ready_threads++;
+  load_avg = FP_ADD(FP_MUL(INT_DIV(CONVERT_TO_FP(59),
+				   60),
+			   load_avg)
+		    ,INT_MUL(INT_DIV(CONVERT_TO_FP(1),
+				     60),
+			     total_ready_threads));
+}
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+    struct thread*cur= thread_current();
+    cur->nice=nice;
+    advanced_priority(cur, NULL);
+    priority_yield();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    return CONVERT_TO_INT_NEAR(INT_MUL(load_avg,
+				       100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+    struct thread*cur=thread_current();
+    return CONVERT_TO_INT_NEAR(INT_MUL(cur->recent_cpu,
+				       100));
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
    The idle thread is initially put on the ready list by
    thread_start().  It will be scheduled once initially, at which
