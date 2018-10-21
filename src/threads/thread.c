@@ -71,6 +71,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 void priority_yield(void);
+void priority_release(struct thread *recipient, struct lock lock);
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
@@ -207,7 +208,7 @@ thread_create (const char *name, int priority,
   
   /* Add to run queue. */
   thread_unblock (t);
-  if (thread_current()->priority < t->priority)
+  if (thread_current()->priority.effective_priority < t->priority.effective_priority)
        thread_yield ();
   
   return tid;
@@ -351,7 +352,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current ()->priority.effective_priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -591,7 +592,7 @@ bool priority_check(const struct list_elem *first_thread,const struct list_elem 
 {
   struct thread *first = list_entry(first_thread,struct thread,elem);
   struct thread *second = list_entry(second_thread,struct thread,elem);
-  if(second->priority->effective_priority > first->priority->effective_priority)
+  if(second->priority.effective_priority > first->priority.effective_priority)
 	return true;
   else
 	return false;
@@ -618,8 +619,8 @@ void priority_donate(struct thread *donor, struct thread *recipient)
   if(donor->priority.effective_priority > recipient->priority.base)
   {
     recipient->priority.effective_priority = donor->priority.effective_priority > recipient->priority.effective_priority ? donor->priority.effective_priority : recipient->priority.effective_priority;
-    list_insert_ordered(&recipient->priority.donors, &donor->pri_elem, priority_check);
-    if(!list_empty(&recipient->priority.recipients))
+    list_insert_ordered(&recipient->priority.donors, &donor->pri_elem, priority_check, NULL);
+    if(recipient->priority.recipient != NULL)
     {
       priority_donate(recipient, recipient->priority.recipient);  /* recursively donate to every thread along the existing donation chain */
     }
@@ -629,10 +630,10 @@ void priority_donate(struct thread *donor, struct thread *recipient)
 /* TODO: Add context about pri_release */
 void priority_release(struct thread *recipient, struct lock lock)
 {
-  if(!list_empty(&recipient->donors))
+  if(!list_empty(&recipient->priority.donors))
   {
     struct list_elem *d, *w;
-    for(d = list_begin(&recipient.donors); d != list_end(&recipient.donors); d = list_next(d))
+    for(d = list_begin(&recipient->priority.donors); d != list_end(&recipient->priority.donors); d = list_next(d))
     {
       for(w = list_begin(&lock.semaphore.waiters); w != list_end(&lock.semaphore.waiters); w = list_next(w))
       {
@@ -664,12 +665,12 @@ void priority_propagation(struct thread *donor, int new_priority)
   {
     struct thread *max_donor = list_entry(list_max(&donor->priority.recipient->priority.donors, priority_check, NULL), struct thread, pri_elem);
     bool change = max_donor->priority.effective_priority != donor->priority.recipient->priority.effective_priority;
-    if(max_donor->priority.effective_priority > &donor->priority.recipient->priority.base)
+    if(max_donor->priority.effective_priority > donor->priority.recipient->priority.base)
     {
-      &donor->priority.recipient->priority.effective_priority = max_donor->priority.effective_priority;
+      donor->priority.recipient->priority.effective_priority = max_donor->priority.effective_priority;
       if(change)
       {
-        priority_propagation(donor->priority.recipient, &donor->priority.recipient->priority.effective_priority);
+        priority_propagation(donor->priority.recipient, donor->priority.recipient->priority.effective_priority);
       }
     }
   }

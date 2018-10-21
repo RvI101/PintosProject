@@ -239,8 +239,8 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
-  if(!list_empty(thread_current()->priority.donors))
+  enum intr_level old_level;
+  if(!list_empty(&thread_current()->priority.donors))
   {
     old_level = intr_disable();
     priority_release(thread_current(), lock);
@@ -309,7 +309,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  waiter.semaphore_priority  = thread_current() -> priority;
+  waiter.semaphore_priority  = thread_current() -> priority.effective_priority;
   list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   
@@ -373,7 +373,7 @@ bool priority_list_less(const struct list_elem *first_thread,const struct list_e
   
    struct thread *first = list_entry(first_thread,struct thread,elem);
    struct thread *second = list_entry(second_thread,struct thread,elem);
-   if(second->priority > first->priority)
+   if(second->priority.effective_priority > first->priority.effective_priority)
 	return true;
    else
 	return false;
