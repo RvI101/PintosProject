@@ -467,12 +467,10 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
 
-  struct priority p;
-  p.base = priority;
-  list_init(&p.donors);
-  p.recipient = NULL;
-  p.effective_priority = priority;
-  t->priority = p;
+  t->priority.base = priority;
+  list_init(&t->priority.donors);
+  t->priority.recipient = NULL;
+  t->priority.effective_priority = priority;
 
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
