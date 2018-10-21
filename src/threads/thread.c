@@ -345,6 +345,10 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority.base = new_priority;
+  if(thread_current()->priority.effective_priority < thread_current ()->priority.base)
+  {
+    thread_current()->priority.effective_priority = thread_current ()->priority.base;
+  }
   priority_yield();
 }
 
