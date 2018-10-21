@@ -216,20 +216,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
       t = list_entry(e, struct timer, elem);
     }
   }
-    if(thread_mlfqs)
-    {
-        struct thread * cur = thread_current();
-        cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
-        if(timer_ticks() % TIMER_FREQ == 0)
-        {
-            update_load_avg();
-            update_recent_cpu_forall();
-        }
-        if(timer_ticks() % 4 == 0)
-        {
-            update_advanced_priority_forall();
-        }
-    }
+  if(thread_mlfqs)
+  {
+      struct thread * cur = thread_current();
+      cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
+      if(timer_ticks() % TIMER_FREQ == 0)
+      {
+          update_load_avg();
+          update_recent_cpu_forall();
+      }
+      if(timer_ticks() % 4 == 0)
+      {
+          update_advanced_priority_forall();
+      }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
