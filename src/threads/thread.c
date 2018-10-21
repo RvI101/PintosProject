@@ -216,6 +216,8 @@ thread_create (const char *name, int priority,
   
   /* Add to run queue. */
   thread_unblock (t);
+  
+  /* Does preemption based on priority when new thread arrives */
   if (thread_current()->priority.effective_priority < t->priority.effective_priority)
        thread_yield ();
   
@@ -392,6 +394,7 @@ update_recent_cpu(struct thread*thread, void*aux UNUSED)
 {
   if(thread!=idle_thread)
   {
+    /* Fixed point calculation for recent_cpu */
     int mul_1=INT_MUL(load_avg,2);
     int add_1=INT_ADD(mul_1,1);
     int div_1=FP_DIV(mul_1,add_1);
@@ -436,6 +439,7 @@ update_load_avg(void)
   int total_ready_threads = total_ready();
   if(cur!=idle_thread)
       total_ready_threads++;
+  /* Fixed point calculations for load_avg */
   int div_a= INT_DIV(CONVERT_TO_FP(59),60);
   int div_b= INT_DIV(CONVERT_TO_FP(1),60);
   int mul_a=FP_MUL(div_a,load_avg);
@@ -464,9 +468,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-
-    int mul =  INT_MUL(load_avg,
-		       100);
+    int mul =  INT_MUL(load_avg,100);
     int conv_int = CONVERT_TO_INT_NEAR(mul);
     return conv_int;
 }
@@ -668,7 +670,9 @@ schedule (void)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
 }
-
+/* Yields the thread comparing the priority based on the scheduler. 
+1.In case of priority scheduler.It compares the priority of the thread considering the priority donation as well.
+2.In case of advanced scheduler.It compares the priority of the current thread and the maximum priority in the reeady queue. */ 
 void priority_yield(void)
 {
  if(list_empty(&ready_list))
@@ -676,6 +680,7 @@ void priority_yield(void)
 
  struct list_elem* next_thread=list_max(&ready_list,priority_check,NULL);
  struct thread *priority_thread = list_entry (next_thread, struct thread, elem);
+ /* yield if current thread priority is less than max priority thread in */
  if(thread_mlfqs)
  {
    if (thread_current()->priority.base < priority_thread->priority.base)
@@ -691,7 +696,7 @@ void priority_yield(void)
    }
  }
 }
-
+/* It is called by list_max function to check the highest priority among two threads */
 bool priority_check(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED)
 {
   struct thread *first = list_entry(first_thread,struct thread,elem);

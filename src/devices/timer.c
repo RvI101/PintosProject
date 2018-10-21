@@ -33,7 +33,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-static void timer_list_countdown();
+bool ticks_incr(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); 
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -90,7 +90,7 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-bool ticks_incr(const struct list_elem *a, const struct list_elem *b, void *aux) 
+bool ticks_incr(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
 {
   struct timer *ta = list_entry(a, struct timer, elem);
   struct timer *tb = list_entry(b, struct timer, elem);
@@ -183,16 +183,7 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-static void timer_list_countdown()
-{
-  struct list_elem *e = list_begin(&timer_list);
-  struct timer *t = list_entry(e, struct timer, elem);
-  if(t->ticks_to_wait <= timer_ticks())
-  {
-    list_pop_front(&timer_list);
-    sema_up(&t->sema);
-  }
-}
+
 
 /* Timer interrupt handler. */
 static void
@@ -216,16 +207,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
       t = list_entry(e, struct timer, elem);
     }
   }
-  if(thread_mlfqs)
+  if(thread_mlfqs) /* For mlfqs update priority */
   {
       struct thread * cur = thread_current();
-      cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
-      if(timer_ticks() % TIMER_FREQ == 0)
+      cur->recent_cpu=INT_ADD(cur->recent_cpu, 1); /* Increment recent_cpu for current thread */
+      if(timer_ticks() % TIMER_FREQ == 0) /* For every TIMER_FREQ ticks */
       {
-          update_load_avg();
+          update_load_avg();  
           update_recent_cpu_forall();
       }
-      if(timer_ticks() % 4 == 0)
+      if(timer_ticks() % 4 == 0)  /* For every 4 ticks */
       {
           update_advanced_priority_forall();
       }

@@ -29,6 +29,11 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+
+/* To compare the priority of the semaphore */
+bool priority_check_semaphore(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
+
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -36,7 +41,6 @@
      decrement it.
    - up or "V": increment the value (and wake up one waiting
      thread, if any). */
-bool priority_check_semaphore(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED);
 
 
 void
@@ -276,7 +280,7 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
-    int semaphore_priority;
+    int semaphore_priority;            /* Created a pointer for a semaphore element */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -320,11 +324,11 @@ cond_wait (struct condition *cond, struct lock *lock)
   sema_init (&waiter.semaphore, 0);
   if(!thread_mlfqs)
   {
-    waiter.semaphore_priority  = thread_current() -> priority.effective_priority;
+    waiter.semaphore_priority  = (thread_current() -> priority.effective_priority);
   }
   else
   {
-    waiter.semaphore_priority  = thread_current() -> priority.base;
+    waiter.semaphore_priority  = (thread_current() -> priority.base);
   }
   list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
@@ -371,7 +375,7 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
-
+/* To compare the priority of the semaphore element */
 bool priority_check_semaphore(const struct list_elem *first_thread,const struct list_elem *second_thread,void *aux UNUSED)
 {
   
