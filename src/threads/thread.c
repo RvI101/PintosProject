@@ -361,15 +361,11 @@ advanced_priority(struct thread* thread, void*aux UNUSED)
 {
   if(thread!=idle_thread)
   {
-    thread->priority = PRI_MAX-CONVERT_TO_INT(INT_DIV(thread->recent_cpu, 4))-thread->nice*2;
+    int div_1=INT_DIV(thread->recent_cpu, 4);
+    thread->priority = PRI_MAX - CONVERT_TO_INT(div_1)-thread->nice*2;
     //Bound thread priority
     thread->priority = thread->priority>PRI_MAX?PRI_MAX:thread->priority;
     thread->priority = thread->priority<PRI_MIN?PRI_MIN:thread->priority;
-    if ( thread!=thread_current() && thread->status == THREAD_READY)
-    {
-      list_remove(&thread->elem);
-      list_push_back (&ready_list, &thread->elem);
-    }
   }	
 }
 
@@ -386,10 +382,11 @@ update_recent_cpu(struct thread*thread, void*aux UNUSED)
 {
   if(thread!=idle_thread)
   {
-    thread->recent_cpu = INT_ADD(FP_MUL(FP_DIV(INT_MUL(load_avg,2),
-					       INT_ADD(INT_MUL(load_avg,2),
-						       1)),
-					thread->recent_cpu),thread->nice);
+    int mul_1=INT_MUL(load_avg,2);
+    int add_1=INT_ADD(mul_1,1);
+    int div_1=FP_DIV(mul_1,add_1);
+    int mul_f=FP_MUL(div_1,thread->recent_cpu);
+    thread->recent_cpu = INT_ADD(mul_f,thread->nice);
   }
 }
 
@@ -411,7 +408,6 @@ update_recent_cpu_forall(void)
 static int
 total_ready(void)
 {
-    int i;
     int total=list_size(&ready_list);
     return total;
 }
@@ -423,12 +419,12 @@ update_load_avg(void)
   int total_ready_threads = total_ready();
   if(cur!=idle_thread)
       total_ready_threads++;
-  load_avg = FP_ADD(FP_MUL(INT_DIV(CONVERT_TO_FP(59),
-				   60),
-			   load_avg)
-		    ,INT_MUL(INT_DIV(CONVERT_TO_FP(1),
-				     60),
-			     total_ready_threads));
+  int div_a= INT_DIV(CONVERT_TO_FP(59),60);
+  int div_b= INT_DIV(CONVERT_TO_FP(1),60);
+  int mul_a=FP_MUL(div_a,load_avg);
+  int mul_b=INT_MUL(div_b,total_ready_threads);
+  load_avg = FP_ADD(mul_a,mul_b);
+
 }
 /* Sets the current thread's nice value to NICE. */
 void
@@ -451,8 +447,11 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-    return CONVERT_TO_INT_NEAR(INT_MUL(load_avg,
-				       100));
+
+    int mul =  INT_MUL(load_avg,
+		       100);
+    int conv_int = CONVERT_TO_INT_NEAR(mul);
+    return conv_int;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -460,8 +459,8 @@ int
 thread_get_recent_cpu (void) 
 {
     struct thread*cur=thread_current();
-    return CONVERT_TO_INT_NEAR(INT_MUL(cur->recent_cpu,
-				       100));
+    int mul= INT_MUL(cur->recent_cpu,100);
+    return CONVERT_TO_INT_NEAR(mul);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.

@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "threads/fixed-point.h"  
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -172,6 +172,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+   if(thread_mlfqs)
+  {
+    struct thread * cur = thread_current();
+    cur->recent_cpu=INT_ADD(cur->recent_cpu, 1);
+    if(timer_ticks() % TIMER_FREQ == 0)
+    {
+      update_load_avg();
+      update_recent_cpu_forall();
+    }
+    if(timer_ticks() % 4 == 0)
+    {
+      update_advanced_priority_forall();
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
