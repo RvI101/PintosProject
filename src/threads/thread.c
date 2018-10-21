@@ -743,7 +743,8 @@ void priority_donate(struct thread *donor, struct thread *recipient, bool update
     donor->priority.recipient = recipient;
   }
 }
-/* TODO: Add context about pri_release */
+
+/* RECIPIENT thread checks if the LOCK it is trying to release has any waiting threads who have donated priority to it. If there are, the donor thread is removed from donors list in RECIPIENT and the donor thread no longer donates priority to RECIPIENT */
 void priority_release(struct thread *recipient, struct lock *lock)
 {
   if(!list_empty(&recipient->priority.donors))
@@ -767,31 +768,6 @@ void priority_release(struct thread *recipient, struct lock *lock)
   }
 }
 
-void priority_propagation(struct thread *donor, int new_priority)
-{
-  if(donor->priority.recipient == NULL)
-  {
-    return;
-  }
-  if(donor->priority.recipient->priority.effective_priority < new_priority)
-  {
-    donor->priority.recipient->priority.effective_priority = new_priority;
-    priority_propagation(donor->priority.recipient, new_priority);
-  }
-  else
-  {
-    struct thread *max_donor = list_entry(list_max(&donor->priority.recipient->priority.donors, priority_check, NULL), struct thread, pri_elem);
-    bool change = max_donor->priority.effective_priority != donor->priority.recipient->priority.effective_priority;
-    if(max_donor->priority.effective_priority > donor->priority.recipient->priority.base)
-    {
-      donor->priority.recipient->priority.effective_priority = max_donor->priority.effective_priority;
-      if(change)
-      {
-        priority_propagation(donor->priority.recipient, donor->priority.recipient->priority.effective_priority);
-      }
-    }
-  }
-}
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */

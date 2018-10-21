@@ -159,6 +159,5 @@ void update_advanced_priority_forall(void);
 void update_recent_cpu_forall(void);
 void update_load_avg(void);
 void priority_donate(struct thread *donor, struct thread *recipient, bool update);
-void priority_propagation(struct thread *donor, int new_priority);
 
 #endif /* threads/thread.h */
