@@ -88,6 +88,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1){}
   return -1;
 }
 
@@ -131,7 +132,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -205,6 +206,35 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
+
+
+void  get_first_word(const char * file_name, char * ex_file)
+{
+  char * begin=file_name;
+  bool is_word = false;
+  while(*begin!='\0')
+  {
+    if(*begin!=' ')
+    {
+      if(!is_word)
+        is_word=true;
+      *ex_file = *begin;
+      ex_file++;
+      begin++;
+    }
+    else
+    {
+      if(is_word)
+      {
+        *ex_file = '\0';
+        is_word = false;
+        return;
+      }
+      begin++;
+    }
+  }
+}
+
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
@@ -220,9 +250,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
+  char ex_file[128];
+  get_first_word(file_name, ex_file);
+  
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (ex_file);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -308,14 +340,75 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
-  success = true;
+  /* Argument passing */
+  if (file_name == NULL)
+  {
+      success = false;
+      goto done;
+  }
+  success =true;
+  int num_chars=0, num_words=0;
+  char * iter;
+  bool is_word = false;
+  for(iter=file_name;*iter!='\0';iter++)
+  {
+      if(*iter!=' ')
+      {
+	  if(!is_word)
+	  {
+	      is_word = true;
+	      num_words++;
+	  }
+	  num_chars++;
+      }
+      else
+	  is_word=false;
+  }
 
+  int req_memory = ROUND_UP((num_chars+num_words),sizeof(int));
+
+  if((req_memory + (num_words+1)*sizeof(char*)+sizeof(char**)+sizeof(int)+sizeof(void*))>PGSIZE)
+  {
+      success = false;
+      goto done;
+  }
+  
+  *((char**)esp) -= req_memory;
+  char*words = (char*)*esp;
+  *((char**)esp) -= (num_words+1)*sizeof(char*);
+  char**word_ref = (char**)*esp;
+  
+  
+  char*token;
+  char*rest = file_name; /*-Rest of the tokens*/
+  while((token = strtok_r(rest, " ", &rest)))
+  {
+      strlcpy(words,token,strlen(token)+1);
+      *word_ref = words;
+      words = words + strlen(token)+1; /* Location for next word */
+      word_ref++; /* Pointer to next word */
+  }
+  *word_ref = 0; /* Fake return address */
+  /* Pointer to first word */
+  word_ref = (char**)*esp;
+  *(char**)esp-=sizeof(char**);
+  **((int**)esp)=(int)(*esp+4);
+  
+  /* Total words argc*/
+  *(char**)esp-=sizeof(int);
+  **((int**)esp)=num_words;
+  *(char**)esp-=sizeof(void*);
+  **((char**)esp) = 0;
+
+  hex_dump ((uintptr_t)*esp, *esp ,104, true);
+  
+   
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
