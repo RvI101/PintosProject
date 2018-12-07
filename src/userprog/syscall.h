@@ -3,4 +3,6 @@
 
 void syscall_init (void);
 
+void syscall_write(int)
+
 #endif /* userprog/syscall.h */
