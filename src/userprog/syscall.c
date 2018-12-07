@@ -5,7 +5,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "lib/user/syscall.h"
-#include <lib/kernel/console.c>
 
 static void syscall_handler (struct intr_frame *);
 
@@ -17,26 +16,32 @@ syscall_init (void)
 
 bool valid_user_vaddr(void *vaddr)
 {
-  return is_user_vaddr(vaddr) && pagedir_get_page(active_pd(), vaddr);
+  if(vaddr == NULL) {
+    exit(-1);
+  }
+  return is_user_vaddr(vaddr); 
 }
 
+void *arg_offset(void *sp, int offset)
+{
+  if (!valid_user_vaddr(sp+offset)) {
+    exit(-1);
+  }
+  return sp + offset;
+}
 
 static void
 syscall_handler (struct intr_frame *f)
 {
-  if(!valid_user_vaddr(f -> esp)) {
-    printf ("system call!\n");
-    thread_exit ();
-  }
-
-  int sys_no = *esp;
+  void *sp = f -> esp;
+  int sys_no = *(int*)arg_offset(sp,0);
 
   switch(sys_no) {
       case SYS_EXIT:
-        exit(*(esp+1));
+        exit(*(int*)arg_offset(sp,1));
         break;
       case SYS_WRITE:
-        write(*(esp+1), *(esp+2), *(esp+3));
+        write(*(int*)arg_offset(sp,1), arg_offset(sp,2), *(unsigned*)arg_offset(sp,3));
         break;
   }
 }
@@ -46,7 +51,7 @@ void exit(int status)
   thread_exit();
 }
 
-int write(int fd, void *buf, unsigned size)
+int write(int fd, const void *buf, unsigned size)
 {
   putbuf(buf, size);
   return size;
