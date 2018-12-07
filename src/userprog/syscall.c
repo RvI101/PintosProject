@@ -54,7 +54,7 @@ void exit(int status)
 int write(int fd, const void *buf, unsigned size)
 {
   if(fd == 1) {
-    putbuf(*buf, size);
+    putbuf((char*)buf, size);
   }
   return size;
 }
