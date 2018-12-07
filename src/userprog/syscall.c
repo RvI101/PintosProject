@@ -53,6 +53,8 @@ void exit(int status)
 
 int write(int fd, const void *buf, unsigned size)
 {
-  putbuf(buf, size);
+  if(fd == 1) {
+    putbuf(buf, size);
+  }
   return size;
 }
