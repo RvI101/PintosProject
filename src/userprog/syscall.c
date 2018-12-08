@@ -5,8 +5,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/pte.h"
+#include "userprog/pagedir.h"
+
 static void syscall_handler (struct intr_frame *);
 
+static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written);
 void
 syscall_init (void) 
 {
@@ -62,14 +65,14 @@ int write(int fd, const void *buf, unsigned size)
   if(!valid_user_range(buf, size))
     exit(-1);
 
-  if (!is_mapped_memory(buffer, size, false))
-      _exit (-1);
+  if (!is_mapped_memory(buf, size, false))
+      exit (-1);
 
   if (size <= 0)
       return 0;
   int res = 0;
   if(fd == 1) {
-	  res = putbuf(buf, size);
+	  putbuf(buf, size);
   }
   return res;
 }
