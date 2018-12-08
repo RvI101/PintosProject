@@ -60,17 +60,24 @@ int write(int fd, const void *buf, unsigned size)
 {
 //    printf("%d is fd\n",fd);
   if(!valid_user_range(buf, size))
-      exit(-1);
+    exit(-1);
+
+  if (!is_mapped_memory(buffer, size, false))
+      _exit (-1);
+
+  if (size <= 0)
+      return 0;
+
   if(fd == 1) {
-	putbuf(buf, size);
+	  return putbuf(buf, size);
   }
-  return size;
+  return 0;
 }
 
 static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written)
 {
-    if(!valid_user_vaddr(vaddr))
-        return false;
+  if(!valid_user_vaddr(vaddr))
+      return false;
 
     void *page = pg_round_down (vaddr);
     while (page < vaddr + size)
