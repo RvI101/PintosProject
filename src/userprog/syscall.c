@@ -4,8 +4,6 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "lib/user/syscall.h"
-
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -41,7 +39,7 @@ syscall_handler (struct intr_frame *f)
         exit(*(int*)arg_offset(sp,1));
         break;
       case SYS_WRITE:
-        write(*(int*)arg_offset(sp,1), arg_offset(sp,2), *(unsigned*)arg_offset(sp,3));
+        write(*(int*)arg_offset(sp,1), (const void*)arg_offset(sp,2), *(unsigned*)arg_offset(sp,3));
         break;
   }
 }
@@ -54,7 +52,7 @@ void exit(int status)
 int write(int fd, const void *buf, unsigned size)
 {
   if(fd == 1) {
-    putbuf((char*)buf, size);
+    putbuf(buf, size);
   }
   return size;
 }
