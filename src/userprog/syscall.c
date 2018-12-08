@@ -20,7 +20,7 @@ bool valid_user_vaddr(void *vaddr)
   return is_user_vaddr(vaddr); 
 }
 
-void * arg_offset(int *sp, int offset)
+uint32_t arg_offset(int *sp, int offset)
 {
   if (!valid_user_vaddr(sp+offset)) {
     exit(-1);
@@ -31,15 +31,15 @@ void * arg_offset(int *sp, int offset)
 static void
 syscall_handler (struct intr_frame *f)
 {
-    void  *sp = f -> esp;
-    int sys_no = *(int*)sp;
+    int *sp = (int*)f -> esp;
+    int sys_no = *sp;
 
   switch(sys_no) {
       case SYS_EXIT:
         exit(*(int*)arg_offset(sp,1));
         break;
       case SYS_WRITE:
-	  f->eax = write(*(int*)arg_offset(sp,1), (const void*)arg_offset(sp,2), *(unsigned*)arg_offset(sp,3));
+	  f->eax = write((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
         break;
   }
 }
@@ -51,7 +51,7 @@ void exit(int status)
 
 int write(int fd, const void *buf, unsigned size)
 {
-    printf("%d is fd\n",fd);
+//    printf("%d is fd\n",fd);
   if(fd == 1) {
     putbuf(buf, size);
   }
