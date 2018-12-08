@@ -400,7 +400,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(char**)esp-=sizeof(void*);
   **((char**)esp) = 0;
 
-  hex_dump ((uintptr_t)*esp, *esp ,104, true);
+  //hex_dump ((uintptr_t)*esp, *esp ,104, true);
   
    
  done:
