@@ -67,11 +67,11 @@ int write(int fd, const void *buf, unsigned size)
 
   if (size <= 0)
       return 0;
-
+  int res = 0;
   if(fd == 1) {
-	  return putbuf(buf, size);
+	  res = putbuf(buf, size);
   }
-  return 0;
+  return res;
 }
 
 static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written)
