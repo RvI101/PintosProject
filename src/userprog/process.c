@@ -20,6 +20,17 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+struct process_description
+{
+   pid_t process_id;
+   struct lock process_lock;
+   struct list_elem *element;
+   struct file* fd;
+   bool existence_status;
+   struct condition condition;
+}
+
+
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -53,7 +64,8 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  list_init(list_process);
+  list_lock(list_lock);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -115,6 +127,30 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  struct list_elem *e;
+  struct process_description *ref_process;
+  lock_acquire(&list_lock);
+  
+  for(e=list_begin(&process_list);e!=list_end(&process_list);e=list_next(e))
+  {
+      ref_process=list_entry(e,struct process,elem);
+      if(ref_process->process_id==cur->tid)
+      {
+          list_remove(&ref_process->element);
+	  ref_process->existence_status=false
+	  if(ref_process->fd)
+	  {
+              file_close(ref_process->fd);
+          }
+	  break;
+      }
+  }
+  lock_release(&list_lock);
+
+  lock_acquire(&ref_process->process_lock);
+  cond_broadcast(&ref_process->condition,&ref_process->lock)
+  lock_release(&ref_process->process_lock);
+
 }
 
 /* Sets up the CPU for running user code in the current
