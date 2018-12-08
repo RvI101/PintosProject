@@ -65,3 +65,23 @@ int write(int fd, const void *buf, unsigned size)
   }
   return size;
 }
+
+static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written)
+{
+    if(!valid_user_vaddr(vaddr))
+        return false;
+
+    void *page = pg_round_down (vaddr);
+    while (page < vaddr + size)
+    {
+        uint32_t *pte = lookup_page (thread_current()->pagedir, page, false);
+        if (pte == NULL || *pte == 0)
+            return false;
+        if (!(*pte & PTE_P) || !(*pte & PTE_U))
+            return false;
+        if (to_be_written && !(*pte & PTE_W))
+            return false;
+        page += PGSIZE;
+    }
+    return true;
+}
