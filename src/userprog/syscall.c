@@ -15,15 +15,21 @@ syscall_init (void)
 bool valid_user_vaddr(void *vaddr)
 {
   if(vaddr == NULL) {
-    exit(-1);
+	exit(-1);
   }
   return is_user_vaddr(vaddr); 
 }
 
+bool valid_user_range(const void *vaddr, unsigned offset)
+{
+	if(!valid_user_vaddr(vaddr) || !valid_user_vaddr(vaddr + offset))
+		return false;
+	return true;
+}
 uint32_t arg_offset(int *sp, int offset)
 {
   if (!valid_user_vaddr(sp+offset)) {
-    exit(-1);
+	exit(-1);
   }
   return *(sp + offset);
 }
@@ -31,16 +37,16 @@ uint32_t arg_offset(int *sp, int offset)
 static void
 syscall_handler (struct intr_frame *f)
 {
-    int *sp = (int*)f -> esp;
-    int sys_no = *sp;
+	int *sp = (int*)f -> esp;
+	int sys_no = *sp;
 
   switch(sys_no) {
-      case SYS_EXIT:
-        exit((int)arg_offset(sp,1));
-        break;
-      case SYS_WRITE:
+	  case SYS_EXIT:
+		exit((int)arg_offset(sp,1));
+		break;
+	  case SYS_WRITE:
 	  f->eax = write((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
-        break;
+		break;
   }
 }
 
@@ -52,8 +58,10 @@ void exit(int status)
 int write(int fd, const void *buf, unsigned size)
 {
 //    printf("%d is fd\n",fd);
+  if(!valid_user_range(buf, size))
+      exit(-1);
   if(fd == 1) {
-    putbuf(buf, size);
+	putbuf(buf, size);
   }
   return size;
 }
