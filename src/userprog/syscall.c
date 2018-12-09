@@ -469,11 +469,12 @@ void close_(int fd UNUSED)
   // printf("close called for fd = %d\n", fd);
 	// TODO
   struct file *f;
-  
+  lock_acquire(&fd_mapping_list_lock);
   f = get_file(fd);
   if (f)
   {
     file_close (f);
     remove_fd(fd);
   }
+  lock_release(&fd_mapping_list_lock);
 }
