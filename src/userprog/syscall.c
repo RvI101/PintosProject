@@ -28,7 +28,7 @@ syscall_init (void)
 
 static void check_access(void* sp)
 {
-  if(!is_user_vaddr(sp)&&)
+  if(!is_user_vaddr(sp))
     exit_(-1);
 }
 

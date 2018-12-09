@@ -263,9 +263,7 @@ start_process (void *pd)
   p_d->exist_status = success;
   sema_up(&p_d->sig);
 
-  if(success)
-      parse_cla(fn_copy2,&if_.esp);
-  
+  success=success&&argument_passing(file_name,&if_.esp);
   
  
   /* If load failed, quit. */

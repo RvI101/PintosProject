@@ -3,6 +3,7 @@
 
 #include <round.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* Number of timer interrupts per second. */
 #define TIMER_FREQ 100
@@ -10,6 +11,12 @@
 void timer_init (void);
 void timer_calibrate (void);
 
+/* Timer struct */
+struct timer {
+  struct semaphore sema; /* Semaphore that indicates if timer has completed or not */
+  int64_t ticks_to_wait; /* Number of ticks left on timer */
+  struct list_elem elem;
+};
 int64_t timer_ticks (void);
 int64_t timer_elapsed (int64_t);
 

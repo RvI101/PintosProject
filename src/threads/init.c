@@ -98,10 +98,7 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
-/* Process handler */
-#ifdef USERPROG
-  process_init ();
-#endif
+
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -116,6 +113,7 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+  process_init ();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
