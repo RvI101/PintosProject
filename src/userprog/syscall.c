@@ -258,8 +258,10 @@ pid_t exec_(const char* cmd_line)
   ret = process_execute(cmd_line);
   lock_release(&file_lock);
   return ret;*/
-
-  return process_execute(cmd_line);
+  lock_acquire(&fd_mapping_list_lock);
+  pid_t pid = process_execute(cmd_line);
+  lock_release(&fd_mapping_list_lock);
+  return pid;
 }
 
 int wait_(pid_t pid)
@@ -464,17 +466,17 @@ static void remove_fd(int fd)
   lock_release(&fd_mapping_list_lock);
 }
 
-void close_(int fd UNUSED)
+void close_(int fd)
 {
   // printf("close called for fd = %d\n", fd);
 	// TODO
   struct file *f;
-  lock_acquire(&fd_mapping_list_lock);
   f = get_file(fd);
   if (f)
   {
+    lock_acquire(&fd_mapping_list_lock);
     file_close (f);
+    lock_release(&fd_mapping_list_lock);
     remove_fd(fd);
   }
-  lock_release(&fd_mapping_list_lock);
 }
