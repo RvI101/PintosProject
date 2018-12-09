@@ -16,11 +16,12 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-
+void  get_first_word(const char * file_name, char * ex_file);
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -30,27 +31,43 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  struct load_stats stat;
+  
+  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  char file[128];
+  get_first_word(fn_copy,file);
+  
+  sema_init(&stat.load_sema,0);
+  stat.success=false;
+  stat.file_name = fn_copy;
+  stat.parent = thread_current();
+  
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file, PRI_DEFAULT, start_process, &stat);
+  sema_down(&stat.load_sema);
+  
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  if(!stat.success)
+      return TID_ERROR;
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux)
 {
-  char *file_name = file_name_;
+    struct load_stats*stat=aux;
+    
+  char *file_name = stat->file_name;
   struct intr_frame if_;
   bool success;
 
@@ -59,12 +76,33 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  stat->success = success = load (file_name, &if_.eip, &if_.esp);
 
+  if(success)
+  {
+      
+      struct thread*curr=thread_current();
+      curr->has_kernel=false;
+      char ex_file[128];
+      get_first_word(file_name,ex_file);
+      curr->cur_file=filesys_open(ex_file);
+      file_deny_write(curr->cur_file);
+
+      struct process_status*ps = curr->p_status;
+
+      lock_acquire(ps->list_lock);
+      list_push_back(&stat->parent->child_status,&ps->element);
+      lock_release(ps->list_lock);
+  }
+  
+  sema_up(&stat->load_sema);
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  if (!success){
+      thread_current()->p_status->counter=1;
+    thread_exit ();  
+  }
+  
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -88,7 +126,24 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(1){}
+    struct thread *curr= thread_current();
+
+    lock_acquire(&curr->list_lock);
+    struct list_elem *ele= list_begin(&curr->child_status);
+    while(ele!=list_end(&curr->child_status)){
+	struct process_status *ps=list_entry(ele, struct  process_status,element);
+	if(ps->pid==child_tid && ps->counter>0)
+	{
+	    sema_down(&ps->sema_wait);
+	    int val = ps->status;
+	    list_remove(&ps->element);
+	    free(ps);
+	    lock_release(&curr->list_lock);
+	    return val;
+	}
+	ele=list_next(ele);
+    }
+    lock_release (&curr->list_lock);
   return -1;
 }
 
@@ -115,6 +170,75 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  struct process_status *ps;
+  struct list_elem*ele=list_begin(&cur->child_status);
+  lock_acquire(&cur->list_lock);
+  while(ele!=list_end(&cur->child_status))
+  {
+      ps=list_entry(ele,struct process_status,element);
+      lock_acquire(&ps->lock);
+      --ps->counter;
+      int count=ps->counter;
+      if(count==0)
+      {
+	  list_remove(&ps->element);
+      }
+      lock_release(&ps->lock);
+      if(count==0)
+	  free(ps);
+      ele=list_next(ele);
+  }
+  lock_release(&cur->list_lock);
+
+
+  lock_acquire (&cur->p_status->lock);
+  --cur->p_status->counter;
+  if(cur->p_status->counter == 0)
+  {
+      if (cur->p_status->list_lock != NULL)
+      lock_acquire (cur->p_status->list_lock);
+    
+    if (cur->p_status->element.next != NULL &&  cur->p_status->element.prev != NULL)
+      list_remove (&cur->p_status->element);
+    if (cur->p_status->list_lock != NULL)
+      lock_release (cur->p_status->list_lock);
+    lock_release (&cur->p_status->lock);
+    free(cur->p_status);
+  }
+  else
+  {
+    lock_release (&cur->p_status->lock);
+    sema_up (&cur->p_status->sema_wait);
+  }
+
+  
+ 
+
+  
+  if (cur->files != NULL)
+  {
+    int fd=2;
+    while( fd < cur->num_files)
+    {
+      if (cur->files[fd] != NULL)
+      {
+        
+        file_close (cur->files[fd]);
+        
+      }
+      fd++;
+    }
+    free (cur->files);
+  }
+
+  /* Reenable write to this file */
+  if (cur->cur_file)
+  {
+
+      file_allow_write (cur->cur_file);
+      file_close (cur->cur_file);
+
+  }
 }
 
 /* Sets up the CPU for running user code in the current
@@ -400,7 +524,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(char**)esp-=sizeof(void*);
   **((char**)esp) = 0;
 
-  //hex_dump ((uintptr_t)*esp, *esp ,104, true);
+  hex_dump ((uintptr_t)*esp, *esp ,104, true);
   
    
  done:

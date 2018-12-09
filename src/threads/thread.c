@@ -10,9 +10,19 @@
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
+#include <list.h>
+#include "threads/thread.h"
+#include "filesys/file.h"
+#include <debug.h>
+#include <list.h>
+#include <stdint.h>
+#include "threads/synch.h"
+#include "threads/malloc.h"
+
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -70,7 +80,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-
+bool init_process_status(struct thread *t, tid_t tid);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -107,6 +117,7 @@ thread_start (void)
 {
   /* Create the idle thread. */
   struct semaphore idle_started;
+  init_process_status(initial_thread,initial_thread->tid);
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
 
@@ -139,6 +150,25 @@ thread_tick (void)
     intr_yield_on_return ();
 }
 
+
+
+bool init_process_status(struct thread *t, tid_t tid)
+{
+  struct process_status* ps;
+  ps = (struct process_status*) malloc(sizeof(struct process_status));
+  if (ps == NULL)
+    return false;
+  t->p_status = ps;
+  ps->pid = tid;
+  ps->status = 0;
+  sema_init( &ps->sema_wait, 0);
+  ps->counter = 2;
+  lock_init ( &ps->lock );
+  ps->list_lock = &thread_current() ->list_lock;
+  ps->element.next = NULL;
+  ps->element.prev = NULL;
+  return true;
+}
 /* Prints thread statistics. */
 void
 thread_print_stats (void) 
@@ -183,6 +213,8 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  if (!init_process_status (t, tid))
+      return TID_ERROR;
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack' 
@@ -469,7 +501,17 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->files = NULL;
+  t->num_files = 0;
+  t->files_size = 0;
+  t->elem.next=t->elem.prev=NULL;
+  t->has_kernel = true;
+  t->has_syscall = false;
+
+  int old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+  intr_set_level (old_level);
+  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

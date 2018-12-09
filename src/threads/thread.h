@@ -4,6 +4,14 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include <debug.h>
+#include <list.h>
+#include <stdint.h>
+#include "threads/synch.h"
+#include "threads/malloc.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -89,15 +97,23 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
+      bool has_kernel;
+      bool has_syscall;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+      uint32_t *pagedir;                  /* Page directory. */
+      struct list child_status;  /* Exit status for child processes */
+      struct lock list_lock;     /* Lock child status  */
+      struct file **files;   /* files with the thread */
+      int num_files;       /* Number of files with the thread */
+      struct file* cur_file;  /* Current working file */
+      struct process_status *p_status;  /* Structure with exit status of this thread */
+      int files_size;
 #endif
-
+      
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -106,6 +122,27 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+
+
+struct process_status
+{
+    int pid;
+    int status;
+    struct semaphore sema_wait; 
+    int counter;            
+    struct lock lock;   
+    struct list_elem element;      
+    struct lock *list_lock;     
+};
+
+struct load_stats
+{
+    struct semaphore load_sema; 
+    bool success;         
+    char *file_name;            
+    struct thread *parent;   
+};
 
 void thread_init (void);
 void thread_start (void);
