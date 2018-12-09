@@ -41,6 +41,8 @@ uint32_t arg_offset(int *sp, int offset)
 static void
 syscall_handler (struct intr_frame *f)
 {
+  struct thread* t = thread_current();
+  t->syscall_mode = true;
 	int *sp = (int*)f -> esp;
 	int sys_no = *sp;
 
@@ -52,6 +54,7 @@ syscall_handler (struct intr_frame *f)
 	  f->eax = write((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
 		break;
   }
+  t->syscall_mode = false;
 }
 
 void exit(int status)
