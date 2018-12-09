@@ -314,11 +314,7 @@ int open_(const char* file)
     exit_(-1);
   }
 
-  struct file* f = filesys_open (file);
-  if (!f) 
-  {  
-    return -1; // Returning -1 because some test cases do not like exit(-1)
-  }
+
 
   pid_t pid = get_current_pid();
   int fd = get_and_increment_fd(pid);
@@ -327,12 +323,16 @@ int open_(const char* file)
     exit_(-1);
   }
 
+  lock_acquire(&fd_mapping_list_lock);
+  struct file* f = filesys_open (file);
+  if (!f)
+  {
+    return -1; // Returning -1 because some test cases do not like exit(-1)
+  }
   struct fd_process *fd_process = malloc(sizeof(struct fd_process));
   fd_process->fd = fd;
   fd_process->pid = pid;
   fd_process->file = f;
-
-  lock_acquire(&fd_mapping_list_lock);  
   list_push_back (&fd_file_mapping, &fd_process->fd_elem);
   lock_release(&fd_mapping_list_lock);
 
