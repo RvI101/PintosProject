@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+extern struct lock filesys_lock;
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -102,7 +104,7 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  if (pd != NULL) 
+  if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -114,6 +116,19 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+    }
+    if(lock_held_by_current_thread(&filesys_lock))
+      lock_release(&filesys_lock);
+    if(cur->file_descriptors != NULL) {
+      int fd;
+      for(fd = 2; fd < cur->max_fd; fd++) {
+        if(cur->file_descriptors[fd] != NULL) {
+          lock_acquire(&filesys_lock);
+          file_close(cur->file_descriptors[fd]);
+          lock_release(&filesys_lock);
+        }
+      }
+      free(cur->file_descriptors);
     }
 }
 

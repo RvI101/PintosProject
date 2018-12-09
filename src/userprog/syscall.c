@@ -6,8 +6,24 @@
 #include "threads/vaddr.h"
 #include "threads/pte.h"
 #include "userprog/pagedir.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "devices/input.h"
 
 static void syscall_handler (struct intr_frame *);
+struct lock filesys_lock;
+
+bool create(const char *file, unsigned initial_size);
+void  exit (int status);
+bool  remove (const char *file);
+int   open (const char *file);
+int   filesize (int fd);
+int   read (int fd, void *buffer, unsigned size);
+int   write (int fd, const void *buffer, unsigned size);
+void  seek (int fd, unsigned position);
+unsigned tell (int fd);
+void  close (int fd);
+
 
 static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written);
 void
@@ -46,17 +62,160 @@ syscall_handler (struct intr_frame *f)
 
   switch(sys_no) {
 	  case SYS_EXIT:
-		exit((int)arg_offset(sp,1));
-		break;
+      exit((int)arg_offset(sp,1));
+      break;
 	  case SYS_WRITE:
-	  f->eax = write((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
-		break;
+      f->eax = write((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
+      break;
+    case SYS_CREATE:
+      f->eax = create((const char*)arg_offset(sp,1), (unsigned)arg_offset(sp,2));
+      break;
+    case SYS_OPEN:
+      f->eax = open((const char*)arg_offset(sp,1));
+      break;
+    case SYS_CLOSE:
+      f->eax = close((int)arg_offset(sp,1));
+      break;
+    case SYS_REMOVE:
+      f->eax = remove((const char*)arg_offset(sp,1));
+      break;
+    case SYS_SEEK:
+      f->eax = seek((int)arg_offset(sp,1), (unsigned)arg_offset(sp,2));
+      break;
+    case SYS_TELL:
+      f->eax = tell((int)arg_offset(sp,1));
+      break;
+    case SYS_FILESIZE:
+      f->eax = filesize((int)arg_offset(sp,1));
+      break;
+    case SYS_READ:
+      f->eax = read((int)arg_offset(sp,1), (const void*)arg_offset(sp,2), (unsigned)arg_offset(sp,3));
+      break;
   }
 }
 
 void exit(int status)
 {
   thread_exit();
+}
+
+bool create(const char *file, unsigned initial_size)
+{
+  if(!valid_user_vaddr(file) || !valid_user_vaddr(file + strlen(file)))
+    exit(-1);
+
+  lock_acquire(&filesys_lock);
+  bool res = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
+  return res;
+}
+
+int open(const char* file)
+{
+  if(!valid_user_vaddr(file) || !valid_user_vaddr(file + strlen(file)))
+    exit(-1);
+
+  lock_acquire(&filesys_lock);
+  struct file* f = filesys_open(file);
+  lock_release(&filesys_lock);
+
+  if(f == NULL)
+    return -1;
+  return thread_add_fd(thread_current(), f);
+}
+
+void close(int fd)
+{
+  struct thread* t = thread_current();
+  if(fd < 2 || !is_valid_fd(t, fd))
+    return;
+  lock_acquire(&filesys_lock);
+  struct file* f = t->file_descriptors[fd];
+  lock_release(&filesys_lock);
+
+  file_close(f);
+  thread_remove_fd(t, fd);
+}
+
+bool remove(const char* file)
+{
+  if(!valid_user_vaddr(file) || !valid_user_vaddr(file + strlen(file)))
+    exit(-1);
+
+  lock_acquire(&filesys_lock);
+  bool res = filesys_remove(file);
+  lock_release(&filesys_lock);
+
+  return res;
+}
+
+void seek(int fd, unsigned position)
+{
+  struct thread* t = thread_current();
+  if(fd < 2 || !is_valid_fd(t, fd))
+    return;
+  struct file* f = t->file_descriptors[fd];
+  lock_acquire(&filesys_lock);
+  file_seek(f, position);
+  lock_release(&filesys_lock);
+}
+
+unsigned tell(int fd)
+{
+  struct thread* t = thread_current();
+  if(fd < 2 || !is_valid_fd(t, fd))
+    return;
+
+  struct file* f = t->file_descriptors[fd];
+  lock_acquire(&filesys_lock);
+  unsigned pos = file_tell(f);
+  lock_release(&filesys_lock);
+
+  return pos;
+}
+
+int filesize(int fd)
+{
+  struct thread* t = thread_current();
+  if(fd < 2 || !is_valid_fd(t, fd))
+    return;
+
+  struct file* f = t->file_descriptors[fd];
+  lock_acquire(&filesys_lock);
+  int size = file_length(f);
+  lock_release(&filesys_lock);
+
+  return size;
+}
+
+int read(int fd, void* buf, unsigned size)
+{
+  if(!valid_user_range(buf, size))
+    exit(-1);
+  if (!is_mapped_memory(buf, size, true))
+    exit (-1);
+  if(size <= 0 || fd == 1)
+    return -1;
+  if(fd == 0)
+  {
+    int i;
+    for(i = 0; i < size; i++) {
+      *(uint8_t*)buf = input_getc();
+      buf++;
+    }
+    return size;
+  }
+  else
+  {
+    struct thread* t = thread_current();
+    if(!is_valid_fd(t, fd))
+      return -1;
+    struct file* f = t->file_descriptors[fd];
+    lock_acquire(&filesys_lock);
+    int res = file_read(f, buf, size);
+    lock_release(&filesys_lock);
+    return res;
+  }
 }
 
 int write(int fd, const void *buf, unsigned size)
@@ -66,15 +225,25 @@ int write(int fd, const void *buf, unsigned size)
     exit(-1);
 
   if (!is_mapped_memory(buf, size, false))
-      exit (-1);
+    exit (-1);
 
-  if (size <= 0)
-      return 0;
-  int res = 0;
+  if (size <= 0 || fd == 0)
+    return 0;
+
   if(fd == 1) {
 	  putbuf(buf, size);
   }
-  return res;
+  else{
+    struct thread *t = thread_current();
+    if(!is_valid_fd(t, fd))
+      return 0;
+    struct file* f = t->file_descriptors[fd];
+    lock_acquire(&filesys_lock);
+    int res = file_write(f, buf, size);
+    lock_release(&filesys_lock);
+    return res;
+  }
+  return 0;
 }
 
 static bool is_mapped_memory(const void *vaddr, size_t size, bool to_be_written)

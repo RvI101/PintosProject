@@ -469,6 +469,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  t->file_descriptors = NULL;
+  t->open_files_num = 0;
+  t->max_fd = 0;
+
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -585,3 +590,54 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+int thread_add_fd(struct thread* t, struct file* f)
+{
+  if (f == NULL || t == NULL)
+    exit (-1);
+  if(t->open_files_num < t->max_fd)
+  {
+    int i;
+    for(i = 2;i < t->max_fd;i++)
+    {
+      if(t->file_descriptors[i] == NULL) {
+        t->file_descriptors[i] = f;
+        t->open_files_num++;
+        return i;
+      }
+    }
+  }
+  else
+  {
+    struct file **file_ds;
+    t->max_fd = 128;
+    file_ds = (struct file**)malloc(128 * sizeof(struct file*));
+    memset(file_ds, 0, 128 * sizeof(struct file*));
+    t->open_files_num = 2;    // 0 and 1 are reserved for stdin and stdout
+    t->file_descriptors = file_ds;
+    int new_fd = t->open_files_num;
+    t->file_descriptors[new_fd] = f;
+    t->open_files_num++;
+    return new_fd;
+  }
+}
+
+bool is_valid_fd(struct thread* t, int fd)
+{
+  if(fd == NULL || t == NULL)
+    return false;
+  if(fd < 0 || fd >= t->max_fd)
+    return false;
+  if(t->file_descriptors[fd] == NULL)
+    return false;
+
+  return true;
+}
+
+void thread_remove_fd(struct thread* t, int fd)
+{
+  if(!is_valid_fd(t, fd))
+    exit(-1);
+  t->file_descriptors[fd] = NULL;
+  t->open_files_num--;
+}
