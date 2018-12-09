@@ -9,7 +9,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "devices/input.h"
-
+#include "threads/synch.h"
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
 
@@ -74,13 +74,13 @@ syscall_handler (struct intr_frame *f)
       f->eax = open((const char*)arg_offset(sp,1));
       break;
     case SYS_CLOSE:
-      f->eax = close((int)arg_offset(sp,1));
+      close((int)arg_offset(sp,1));
       break;
     case SYS_REMOVE:
       f->eax = remove((const char*)arg_offset(sp,1));
       break;
     case SYS_SEEK:
-      f->eax = seek((int)arg_offset(sp,1), (unsigned)arg_offset(sp,2));
+      seek((int)arg_offset(sp,1), (unsigned)arg_offset(sp,2));
       break;
     case SYS_TELL:
       f->eax = tell((int)arg_offset(sp,1));
