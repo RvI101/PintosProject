@@ -15,11 +15,28 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#include "threads/synch.h"
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+void  get_first_word(const char * file_name, char * ex_file);
+struct process_description
+{
+   char* cmd;
+   bool exist_status;
+   struct semaphore sig;
+};
+
+
+static struct list process_list;
+static struct lock process_lock;
+void process_init()
+{
+  list_init(&process_list);
+  lock_init(&process_lock);
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -38,19 +55,124 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  struct process_description* p_d = malloc(sizeof(struct process_description));
+  p_d->cmd=fn_copy;
+  sema_init(&p_d->sig,0);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, p_d);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    palloc_free_page (fn_copy);
+  }
+  else
+  {
+      struct process_items*pi=malloc(sizeof(struct process_items));
+      pi->pid=tid;
+      int i = 0;
+      get_first_word(file_name,pi->name);
+
+      pi->exists =true;
+      pi->status = 0;
+      pi->fd_counter=2;
+      pi->exe=NULL;
+
+      lock_init(&pi->lock);
+      cond_init(&pi->condition);
+
+      lock_init(&pi->lock);
+      cond_init(&pi->condition);
+
+      lock_acquire(&process_lock);
+      list_push_back(&process_list, &pi->element);
+      lock_release(&process_lock);
+
+      sema_down(&p_d->sig);
+      if(p_d->exist_status == false)
+      {
+	      tid = TID_ERROR;
+      }
+      else
+      {
+	  lock_acquire(&process_lock);
+	  pi->exe = filesys_open(pi->name);
+	  file_deny_write(pi->exe);
+	  lock_release(&process_lock);
+      }
+
+      free(p_d);
+
+  }
   return tid;
+}
+
+bool argument_passing(char*file_name,char**esp)
+ { /* Argument passing */
+  if (file_name == NULL)
+  {
+      return false;
+  }
+  int num_chars=0, num_words=0;
+  char * iter;
+  bool is_word = false;
+  for(iter=file_name;*iter!='\0';iter++)
+  {
+      if(*iter!=' ')
+      {
+	  if(!is_word)
+	  {
+	      is_word = true;
+	      num_words++;
+	  }
+	  num_chars++;
+      }
+      else
+	  is_word=false;
+  }
+  /* Check required memory and available PGSIZE */
+  int req_memory = ROUND_UP((num_chars+num_words),sizeof(int));
+
+  if((req_memory + (num_words+1)*sizeof(char*)+sizeof(char**)+sizeof(int)+sizeof(void*))>PGSIZE)
+  {
+      return false;
+  }
+  
+  *((char**)esp) -= req_memory;
+  char*words = (char*)*esp;
+  *((char**)esp) -= (num_words+1)*sizeof(char*);
+  char**word_ref = (char**)*esp;
+  
+  
+  char*token;
+  char*rest = file_name; /*-Rest of the tokens*/
+  while((token = strtok_r(rest, " ", &rest)))
+  {
+      strlcpy(words,token,strlen(token)+1);
+      *word_ref = words;
+      words = words + strlen(token)+1; /* Location for next word */
+      word_ref++; /* Pointer to next word */
+  }
+  *word_ref = 0; /* Fake return address */
+  /* Pointer to first word */
+  word_ref = (char**)*esp;
+  *(char**)esp-=sizeof(char**);
+  **((int**)esp)=(int)(*esp+4);
+  
+  /* Total words argc*/
+  *(char**)esp-=sizeof(int);
+  **((int**)esp)=num_words;
+  *(char**)esp-=sizeof(void*);
+  **((char**)esp) = 0;
+
+  return true;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *pd)
 {
-  char *file_name = file_name_;
+  struct process_description*p_d=(struct process_description*)pd; 
+  char *file_name = p_d->cmd;
   struct intr_frame if_;
   bool success;
 
@@ -59,9 +181,28 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  
 
+  char *fn_copy, *fn_copy2;
+  fn_copy = palloc_get_page (0);
+  fn_copy2 = palloc_get_page (0);
+  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy2, file_name, PGSIZE);
+  char *save_ptr;
+  char *file_name_parsed = strtok_r (fn_copy, " ", &save_ptr);
+  success = load (file_name_parsed, &if_.eip, &if_.esp);
+
+//get_first_word(file_name,exe_file);
+  
+  p_d->exist_status = success;
+  sema_up(&p_d->sig);
+
+  success=success&&argument_passing(file_name,&if_.esp);
+  
+ 
   /* If load failed, quit. */
+    palloc_free_page (fn_copy2);
+  palloc_free_page(fn_copy);
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
@@ -88,7 +229,56 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+ struct process_items *pi = get_process(child_tid);
+  if(pi!=NULL)
+  {
+    lock_acquire(&pi->lock);
+    cond_wait(&pi->condition, &pi->lock);
+    lock_release(&pi->lock);
+    return pi->status;
+  }
+
   return -1;
+}
+
+struct process_items* get_process(pid_t pid)
+{
+  lock_acquire(&process_lock);
+  struct list_elem *elem;
+  struct process_items* pi = NULL;
+  for (elem = list_begin (&process_list); elem != list_end (&process_list); elem = list_next (elem))
+  {
+      struct process_items *p_i = list_entry (elem, struct process_items, element);
+    if(p_i->pid == pid)
+    {
+      pi = p_i;
+      break;
+    }
+  }
+  lock_release(&process_lock);
+  return pi;
+}
+
+int fetch_file(pid_t pid)
+{
+  struct process_items* pi = get_process(pid);
+  if(!pi)
+  {
+    return -1;
+  }
+
+  lock_acquire(&process_lock);
+  int fd = pi->fd_counter++;
+  lock_release(&process_lock);
+  return fd;
+}
+
+pid_t current_process()
+{
+  struct process_items* pi = get_process(thread_current()->tid);
+  if(pi==NULL)
+      return -1;
+  return pi->pid;
 }
 
 /* Free the current process's resources. */
@@ -114,7 +304,40 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  struct list_elem *e;
+  struct process_items *ref_process=NULL;
+  
+  
+  lock_acquire(&process_lock);
+  
+  for (e = list_begin (&process_list); e != list_end (&process_list); e = list_next (e))
+  {
+    struct process_items *proc = list_entry (e, struct process_items, element);
+    if(proc->pid == cur->tid)
+    {
+      ref_process = proc;
+      break;
+    }
+  }
+
+  if(ref_process!=NULL)
+  {
+    list_remove(&ref_process->element);
+    ref_process->exists = false;
+    if(ref_process->exe!=NULL)
+    {
+      file_close(ref_process->exe);
+    }
+  }
+
+  lock_release(&process_lock);
+
+  
+  lock_acquire(&ref_process->lock);
+  cond_broadcast(&ref_process->condition, &ref_process->lock);
+  lock_release(&ref_process->lock);
 }
+
 
 /* Sets up the CPU for running user code in the current
    thread.
@@ -131,7 +354,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -205,6 +428,35 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
+
+
+void  get_first_word(const char * file_name, char * ex_file)
+{
+  char * begin=file_name;
+  bool is_word = false;
+  while(*begin!='\0')
+  {
+    if(*begin!=' ')
+    {
+      if(!is_word)
+        is_word=true;
+      *ex_file = *begin;
+      ex_file++;
+      begin++;
+    }
+    else
+    {
+      if(is_word)
+      {
+        *ex_file = '\0';
+        is_word = false;
+        return;
+      }
+      begin++;
+    }
+  }
+}
+
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
@@ -220,7 +472,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
+  
+  
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -307,15 +560,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
-  success = true;
-
+  success=true;
+  //hex_dump ((uintptr_t)*esp, *esp ,104, true);
+  
+   
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
